@@ -4,7 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"fmt"
+	"errors"
 
 	mbase "github.com/multiformats/go-multibase"
 )
@@ -15,6 +15,11 @@ const (
 
 	// KeyBytes is the length of GCM key.
 	KeyBytes = 32
+)
+
+var (
+	cipherTextError = errors.New("malformed cipher text")
+	invalidKeyError = errors.New("invalid key")
 )
 
 // Key is a wrapper for a symmetric key.
@@ -43,7 +48,7 @@ func New() *Key {
 // FromBytes returns a key by decoding bytes.
 func FromBytes(k []byte) (*Key, error) {
 	if len(k) != KeyBytes {
-		return nil, fmt.Errorf("invalid key")
+		return nil, invalidKeyError
 	}
 	return &Key{raw: k}, nil
 }
@@ -104,6 +109,9 @@ func (k *Key) Decrypt(ciphertext []byte) ([]byte, error) {
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
+	}
+	if len(ciphertext) < NonceBytes {
+		return nil, cipherTextError
 	}
 	nonce := ciphertext[:NonceBytes]
 	plain, err := aesgcm.Open(nil, nonce, ciphertext[NonceBytes:], nil)

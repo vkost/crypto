@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha512"
-	"fmt"
+	"errors"
 	"math/big"
 
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -22,7 +22,9 @@ const (
 
 var (
 	// Nacl box decryption failed.
-	BoxDecryptionError = fmt.Errorf("failed to decrypt curve25519")
+	BoxDecryptionError = errors.New("failed to decrypt curve25519")
+	keyTypeError       = errors.New("could not determine key type")
+	cipherTextError    = errors.New("malformed cipher text")
 )
 
 // EncryptionKey is a public key wrapper that can perform encryption.
@@ -33,7 +35,7 @@ type EncryptionKey struct {
 // FromPubKey returns a key by parsing k into a public key.
 func FromPubKey(pk crypto.PubKey) (*EncryptionKey, error) {
 	if _, ok := pk.(*crypto.Ed25519PublicKey); !ok {
-		return nil, fmt.Errorf("could not determine key type")
+		return nil, keyTypeError
 	}
 	return &EncryptionKey{pk: pk}, nil
 }
@@ -56,7 +58,7 @@ type DecryptionKey struct {
 // FromPrivKey returns a key by parsing k into a private key.
 func FromPrivKey(sk crypto.PrivKey) (*DecryptionKey, error) {
 	if _, ok := sk.(*crypto.Ed25519PrivateKey); !ok {
-		return nil, fmt.Errorf("could not determine key type")
+		return nil, keyTypeError
 	}
 	return &DecryptionKey{sk: sk}, nil
 }
@@ -81,7 +83,7 @@ func encrypt(plaintext []byte, pk crypto.PubKey) ([]byte, error) {
 	if ok {
 		return encryptCurve25519(ed25519Pubkey, plaintext)
 	}
-	return nil, fmt.Errorf("could not determine key type")
+	return nil, keyTypeError
 }
 
 func decrypt(ciphertext []byte, sk crypto.PrivKey) ([]byte, error) {
@@ -89,7 +91,7 @@ func decrypt(ciphertext []byte, sk crypto.PrivKey) ([]byte, error) {
 	if ok {
 		return decryptCurve25519(ed25519Privkey, ciphertext)
 	}
-	return nil, fmt.Errorf("could not determine key type")
+	return nil, keyTypeError
 }
 
 func publicToCurve25519(k *crypto.Ed25519PublicKey) (*[EphemeralPublicKeyBytes]byte, error) {
@@ -148,6 +150,9 @@ func decryptCurve25519(privKey *crypto.Ed25519PrivateKey, ciphertext []byte) ([]
 
 	var plaintext []byte
 
+	if len(ciphertext) < NonceBytes+EphemeralPublicKeyBytes {
+		return nil, cipherTextError
+	}
 	n := ciphertext[:NonceBytes]
 	ephemPubkeyBytes := ciphertext[NonceBytes : NonceBytes+EphemeralPublicKeyBytes]
 	ct := ciphertext[NonceBytes+EphemeralPublicKeyBytes:]
